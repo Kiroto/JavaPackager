@@ -16,7 +16,7 @@ public class CommandUtils {
 	public static String execute(File workingDirectory, String executable, Object... arguments) throws IOException, CommandLineException {
 		ExecutionResult result = executeWithResult(workingDirectory, executable, arguments);
 		if (result.getExitCode() != 0) {
-			throw new CommandLineException("Command execution failed: " + executable + " " + StringUtils.join(arguments, " "));
+			throw new CommandLineException("Command execution failed: " + executable + " " + StringUtils.join(arguments, " ") + "\n Error:" + result.getError());
 		}
 		return result.getOutput();
 	}

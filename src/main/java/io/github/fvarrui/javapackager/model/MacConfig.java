@@ -36,6 +36,25 @@ public class MacConfig implements Serializable {
 	private boolean codesignApp = true;
 	private InfoPlist infoPlist = new InfoPlist();
 
+	public boolean isNotarizeApp() {
+		return isNotarizeApp;
+	}
+
+	public void setNotarizeApp(boolean notarizeApp) {
+		isNotarizeApp = notarizeApp;
+	}
+
+	public NotarizationConfig getNotarizationConfig() {
+		return notarizationConfig;
+	}
+
+	public void setNotarizationConfig(NotarizationConfig notarizationConfig) {
+		this.notarizationConfig = notarizationConfig;
+	}
+
+	private boolean isNotarizeApp = false;
+	private NotarizationConfig notarizationConfig = new NotarizationConfig();
+
 	public File getIcnsFile() {
 		return icnsFile;
 	}
