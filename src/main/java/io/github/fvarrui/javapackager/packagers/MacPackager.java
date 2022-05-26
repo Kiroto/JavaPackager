@@ -7,6 +7,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import groovyjarjarpicocli.CommandLine;
+import io.github.fvarrui.javapackager.model.NotarizationConfig;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.codehaus.plexus.util.cli.CommandLineException;
@@ -105,14 +107,17 @@ public class MacPackager extends Packager {
 		} else {
 			
 			// sets startup file
-			this.executable = new File(macOSFolder, "universalJavaApplicationStub");						
+			this.executable = new File(macOSFolder, "universalJavaApplicationStub_");
 			Logger.info("Using " + executable.getAbsolutePath() + " as startup script");
 			
 		}
 		
 		// copies universalJavaApplicationStub startup file to boot java app
 		File appStubFile = new File(macOSFolder, "universalJavaApplicationStub");
+		File customStubFile = new File(macOSFolder, "universalJavaApplicationStub_");
 		FileUtils.copyResourceToFile("/mac/universalJavaApplicationStub", appStubFile, true);
+		FileUtils.copyResourceToFile("/mac/universalJavaApplicationStub_", customStubFile, true);
+
 		FileUtils.processFileContent(appStubFile, content -> {
 			if (!macConfig.isRelocateJar()) {
 				content = content.replaceAll("/Contents/Resources/Java", "/Contents/Resources");
@@ -121,6 +126,7 @@ public class MacPackager extends Packager {
 			return content;
 		});
 		appStubFile.setExecutable(true, false);
+		customStubFile.setExecutable(true, false);
 		
 		// process classpath
 		classpath = (this.macConfig.isRelocateJar() ? "Java/" : "") + this.jarFile.getName() + (classpath != null ? ":" + classpath : "");
@@ -143,13 +149,29 @@ public class MacPackager extends Packager {
 			Logger.warn("App codesigning disabled");
 		} else {
 			codesign(this.macConfig.getDeveloperId(), this.macConfig.getEntitlements(), this.appFile);
+			if (!this.macConfig.isNotarizeApp()) {
+				Logger.warn("Notarizing is disabled");
+			} else {
+				NotarizationConfig notConf = this.macConfig.getNotarizationConfig();
+				if (!notConf.areConfigurationsValid()) {
+					Logger.warn("Notarizing configurations are not properly set");
+				} else {
+					notarize(notConf.getAppleID(), notConf.getTeamID(), notConf.getAppSpecificPassword());
+				}
+			}
 		}
-		
 		return appFile;
 	}
 
-	private void codesign(String developerId, File entitlements, File appFile) throws IOException, CommandLineException {
+	private void makeDirWritable(String dirPath) throws IOException, CommandLineException {
+		ArrayList<String> arguments = new ArrayList();
+		arguments.add("-R");
+		arguments.add("+rw");
+		arguments.add(dirPath);
+		CommandUtils.execute("chmod", arguments.toArray());
+	}
 
+	private void codesign(String developerId, File entitlements, File appFile) throws IOException, CommandLineException {
 		List<String> flags = new ArrayList<>();
 		if (VersionUtils.compareVersions("10.13.6", SystemUtils.OS_VERSION) >= 0) {
 			flags.add("runtime"); // enable hardened runtime if Mac OS version >= 10.13.6 
@@ -158,24 +180,66 @@ public class MacPackager extends Packager {
 		}
 		
 		List<Object> codesignArgs = new ArrayList<>();
-		codesignArgs.add("--force");
-		if (!flags.isEmpty()) {			
+		codesignArgs.add("-f");
+		codesignArgs.add("--verbose=4");
+		codesignArgs.add("--deep");
+		codesignArgs.add("--strict");
+		codesignArgs.add("-s");
+		codesignArgs.add(developerId);
+		if (!flags.isEmpty()) {
 			codesignArgs.add("--options");
 			codesignArgs.add(StringUtils.join(flags, ","));
 		}
-		codesignArgs.add("--deep");
 		if (entitlements == null) {
 			Logger.warn("Entitlements file not specified");
 		} else if (!entitlements.exists()) {
 			Logger.warn("Entitlements file doesn't exist: " + entitlements);
 		} else {
 			codesignArgs.add("--entitlements");
-			codesignArgs.add(entitlements);
+			codesignArgs.add(entitlements.getPath());
 		}
-		codesignArgs.add("--sign");
-		codesignArgs.add(developerId);
-		codesignArgs.add(appFile);
+		codesignArgs.add(appFile.getPath());
+		// JRE not writable fix
+		makeDirWritable(appFile.getPath());
 		CommandUtils.execute("codesign", codesignArgs.toArray(new Object[codesignArgs.size()]));
 	}
 
+	private void notarize(String appleId, String teamID, String password) throws IOException, CommandLineException {
+		// Zip the App folder
+		File zippedFolder = zipAppFolder();
+
+		List<Object> notarizeArgs = new ArrayList<>();
+		// xcrun notarytool submit --apple-id "kiroto50@gmail.com" --team-id 3J7EGFTQ3H BeatBuddyLoader.zip --wait
+		notarizeArgs.add("notarytool");
+		notarizeArgs.add("submit");
+		notarizeArgs.add("--apple-id");
+		notarizeArgs.add(appleId);
+		notarizeArgs.add("--team-id");
+		notarizeArgs.add(teamID);
+		notarizeArgs.add("--password");
+		notarizeArgs.add(password);
+		notarizeArgs.add("--wait");
+		notarizeArgs.add(zippedFolder);
+		// Send the zip to notarize
+		CommandUtils.execute("xcrun", notarizeArgs.toArray(new Object[notarizeArgs.size()]));
+		// Unzip the folder (should end up in the same location with the same paths)
+		unzip(zippedFolder);
+	}
+
+	private File zipAppFolder() throws IOException, CommandLineException {
+		File outputFile = new File(appFolder.getParentFile(), name + ".zip");
+		List<Object> zipArgs = new ArrayList<>();
+		zipArgs.add("-r");
+		zipArgs.add(outputFile.getPath());
+		zipArgs.add(appFolder);
+		CommandUtils.execute("zip", zipArgs.toArray(new Object[zipArgs.size()]));
+		return outputFile;
+	}
+
+	private void unzip(File file) throws IOException, CommandLineException {
+		List<Object> unzipArgs = new ArrayList<>();
+		unzipArgs.add("-o");
+		unzipArgs.add(file.getPath());
+		CommandUtils.execute("unzip", unzipArgs.toArray(new Object[unzipArgs.size()]));
+	}
 }

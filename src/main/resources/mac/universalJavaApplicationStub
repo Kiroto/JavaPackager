@@ -369,7 +369,7 @@ language=""
 for i in "${appleLanguages[@]}"
 do
 	langValue="${i%-*}"
-    if [[ "$i" =~ $stubLanguages ]]; then 
+    if [[ "$i" =~ $stubLanguages ]]; then
 		stub_logger "[LanguageSearch] ... selected '$i' ('$langValue') as the default language for the launcher stub"
 		language=${langValue}
         break
@@ -628,7 +628,7 @@ if [ -z "${JAVACMD}" ] || [ ! -x "${JAVACMD}" ] ; then
 
 	# find installed JavaVirtualMachines (JDK + JRE)
 	allJVMs=()
-	
+
 	# read JDK's from '/usr/libexec/java_home --xml' command with PlistBuddy and a custom Dict iterator
 	# idea: https://stackoverflow.com/a/14085460/1128689 and https://scriptingosx.com/2018/07/parsing-dscl-output-in-scripts/
 	javaXml=$(/usr/libexec/java_home --xml)
